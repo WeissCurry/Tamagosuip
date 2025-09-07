@@ -10,7 +10,6 @@ type ActionButtonProps = {
   isPending: boolean;
   label: string;
   icon: ReactNode;
-  className?: string;
 };
 
 export function ActionButton({
@@ -19,7 +18,6 @@ export function ActionButton({
   isPending,
   label,
   icon,
-  className,
 }: ActionButtonProps) {
   return (
     <Button
@@ -33,7 +31,6 @@ export function ActionButton({
         <div className="mr-2 h-4 w-4">{icon}</div>
       )}
       {label}
-      <div className={className}></div>
     </Button>
   );
 }

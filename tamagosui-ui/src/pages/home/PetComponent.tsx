@@ -11,8 +11,6 @@ import {
   BriefcaseIcon,
   ZapIcon,
   ChevronUpIcon,
-  HeartPulseIcon, // BARU: Ikon untuk tombol Revive
-  HandCoinsIcon, // BARU: Ikon untuk tombol Beg for Coins
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,10 +32,6 @@ import { StatDisplay } from "./components/StatDisplay";
 import { ActionButton } from "./components/ActionButton";
 import { WardrobeManager } from "./components/Wardrobe";
 
-// BARU: Impor hooks untuk aksi baru
-import { useMutateBegForCoins } from "@/hooks/useMutateBegForCoins";
-import { useMutateRevivePet } from "@/hooks/useMutateRevivePet";
-
 import { useMutateCheckAndLevelUp } from "@/hooks/useMutateCheckLevel";
 import { useMutateFeedPet } from "@/hooks/useMutateFeedPet";
 import { useMutateLetPetSleep } from "@/hooks/useMutateLetPetSleep";
@@ -45,17 +39,18 @@ import { useMutatePlayWithPet } from "@/hooks/useMutatePlayWithPet";
 import { useMutateWakeUpPet } from "@/hooks/useMutateWakeUpPet";
 import { useMutateWorkForCoins } from "@/hooks/useMutateWorkForCoins";
 import { useQueryGameBalance } from "@/hooks/useQueryGameBalance";
+
 import type { PetStruct } from "@/types/Pet";
 
-// MODIFIKASI: Tambahkan properti `is_dead` sesuai dengan fungsi view di smart contract
 type PetDashboardProps = {
-  pet: PetStruct & { is_dead: boolean };
+  pet: PetStruct;
 };
 
 export default function PetComponent({ pet }: PetDashboardProps) {
   // --- Fetch Game Balance ---
   const { data: gameBalance, isLoading: isLoadingGameBalance } =
     useQueryGameBalance();
+
   const [displayStats, setDisplayStats] = useState(pet.stats);
 
   // --- Hooks for Main Pet Actions ---
@@ -64,6 +59,7 @@ export default function PetComponent({ pet }: PetDashboardProps) {
     useMutatePlayWithPet();
   const { mutate: mutateWorkForCoins, isPending: isWorking } =
     useMutateWorkForCoins();
+
   const { mutate: mutateLetPetSleep, isPending: isSleeping } =
     useMutateLetPetSleep();
   const { mutate: mutateWakeUpPet, isPending: isWakingUp } =
@@ -71,18 +67,14 @@ export default function PetComponent({ pet }: PetDashboardProps) {
   const { mutate: mutateLevelUp, isPending: isLevelingUp } =
     useMutateCheckAndLevelUp();
 
-  // BARU: Hooks untuk aksi Revive dan Beg for Coins
-  const { mutate: mutateRevivePet, isPending: isReviving } =
-    useMutateRevivePet();
-  const { mutate: mutateBegForCoins, isPending: isBegging } =
-    useMutateBegForCoins();
-
   useEffect(() => {
     setDisplayStats(pet.stats);
   }, [pet.stats]);
 
   useEffect(() => {
+    // This effect only runs when the pet is sleeping
     if (pet.isSleeping && !isWakingUp && gameBalance) {
+      // Start a timer that updates the stats every second
       const intervalId = setInterval(() => {
         setDisplayStats((prev) => {
           const energyPerSecond =
@@ -91,6 +83,7 @@ export default function PetComponent({ pet }: PetDashboardProps) {
             1000 / Number(gameBalance.sleep_hunger_loss_ms);
           const happinessLossPerSecond =
             1000 / Number(gameBalance.sleep_happiness_loss_ms);
+
           return {
             energy: Math.min(
               gameBalance.max_stat,
@@ -100,10 +93,12 @@ export default function PetComponent({ pet }: PetDashboardProps) {
             happiness: Math.max(0, prev.happiness - happinessLossPerSecond),
           };
         });
-      }, 1000);
+      }, 1000); // Runs every second
+
+      // IMPORTANT: Clean up the timer when the pet wakes up or the component unmounts
       return () => clearInterval(intervalId);
     }
-  }, [pet.isSleeping, isWakingUp, gameBalance]);
+  }, [pet.isSleeping, isWakingUp, gameBalance]); // Rerun this effect if sleep status or balance changes
 
   if (isLoadingGameBalance || !gameBalance)
     return (
@@ -113,42 +108,28 @@ export default function PetComponent({ pet }: PetDashboardProps) {
     );
 
   // --- Client-side UI Logic & Button Disabling ---
-  // MODIFIKASI: Tambahkan status pending dari aksi baru
+  // `isAnyActionPending` prevents the user from sending multiple transactions at once.
   const isAnyActionPending =
-    isFeeding ||
-    isPlaying ||
-    isSleeping ||
-    isWorking ||
-    isLevelingUp ||
-    isReviving ||
-    isBegging;
+    isFeeding || isPlaying || isSleeping || isWorking || isLevelingUp;
 
-  // MODIFIKASI: Tambahkan pengecekan `!pet.is_dead` pada semua aksi
+  // These `can...` variables mirror the smart contract's rules (`assert!`) on the client-side.
   const canFeed =
-    !pet.is_dead &&
     !pet.isSleeping &&
     pet.stats.hunger < gameBalance.max_stat &&
     pet.game_data.coins >= Number(gameBalance.feed_coins_cost);
   const canPlay =
-    !pet.is_dead &&
     !pet.isSleeping &&
     pet.stats.energy >= gameBalance.play_energy_loss &&
     pet.stats.hunger >= gameBalance.play_hunger_loss;
   const canWork =
-    !pet.is_dead &&
     !pet.isSleeping &&
     pet.stats.energy >= gameBalance.work_energy_loss &&
     pet.stats.happiness >= gameBalance.work_happiness_loss &&
     pet.stats.hunger >= gameBalance.work_hunger_loss;
   const canLevelUp =
-    !pet.is_dead &&
     !pet.isSleeping &&
     pet.game_data.experience >=
       pet.game_data.level * Number(gameBalance.exp_per_level);
-  
-  // BARU: Kondisi untuk aksi baru sesuai aturan smart contract
-  const canRevive = pet.is_dead && pet.game_data.coins === 0;
-  const canBeg = !pet.is_dead && pet.game_data.coins === 0;
 
   return (
     <TooltipProvider>
@@ -159,15 +140,14 @@ export default function PetComponent({ pet }: PetDashboardProps) {
             Level {pet.game_data.level}
           </CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-4">
           {/* Pet Image */}
           <div className="flex justify-center">
             <img
               src={pet.image_url}
               alt={pet.name}
-              className={`w-36 h-36 rounded-full border-4 border-primary/20 object-cover ${
-                pet.is_dead ? "grayscale" : "" // MODIFIKASI: Gambar menjadi abu-abu jika pingsan
-              }`}
+              className="w-36 h-36 rounded-full border-4 border-primary/20 object-cover"
             />
           </div>
 
@@ -193,6 +173,8 @@ export default function PetComponent({ pet }: PetDashboardProps) {
                 </TooltipContent>
               </Tooltip>
             </div>
+
+            {/* Stat Bars */}
             <div className="space-y-2">
               <StatDisplay
                 icon={<BatteryIcon className="text-green-500" />}
@@ -212,127 +194,79 @@ export default function PetComponent({ pet }: PetDashboardProps) {
             </div>
           </div>
 
-          {/* BARU: Tampilan kondisional berdasarkan status hidup/pingsan */}
-          {pet.is_dead ? (
-            <div className="text-center p-4 border-2 border-dashed border-red-500 rounded-lg space-y-3">
-              <h3 className="text-xl font-bold text-red-500">
-                {pet.name} Pingsan!
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Hidupkan kembali peliharaanmu untuk lanjut bermain.
-              </p>
+          <div className="pt-2">
+            <Button
+              onClick={() => mutateLevelUp({ petId: pet.id })}
+              disabled={!canLevelUp || isAnyActionPending}
+              className="w-full bg-green-600 hover:bg-green-700"
+            >
+              {isLevelingUp ? (
+                <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <ChevronUpIcon className="mr-2 h-4 w-4" />
+              )}
+              Level Up!
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <ActionButton
+              onClick={() => mutateFeedPet({ petId: pet.id })}
+              disabled={!canFeed || isAnyActionPending}
+              isPending={isFeeding}
+              label="Feed"
+              icon={<DrumstickIcon />}
+            />
+            <ActionButton
+              onClick={() => mutatePlayWithPet({ petId: pet.id })}
+              disabled={!canPlay || isAnyActionPending}
+              isPending={isPlaying}
+              label="Play"
+              icon={<PlayIcon />}
+            />
+            <div className="col-span-2">
+              <ActionButton
+                onClick={() => mutateWorkForCoins({ petId: pet.id })}
+                disabled={!canWork || isAnyActionPending}
+                isPending={isWorking}
+                label="Work"
+                icon={<BriefcaseIcon />}
+              />
+            </div>
+          </div>
+          <div className="col-span-2 pt-2">
+            {pet.isSleeping ? (
               <Button
-                onClick={() => mutateRevivePet({ petId: pet.id })}
-                disabled={!canRevive || isAnyActionPending}
-                className="w-full bg-emerald-500 hover:bg-emerald-600"
+                onClick={() => mutateWakeUpPet({ petId: pet.id })}
+                disabled={isWakingUp}
+                className="w-full bg-yellow-500 hover:bg-yellow-600"
               >
-                {isReviving ? (
+                {isWakingUp ? (
                   <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <HeartPulseIcon className="mr-2 h-4 w-4" />
-                )}
-                Hidupkan Kembali
+                  <ZapIcon className="mr-2 h-4 w-4" />
+                )}{" "}
+                Wake Up!
               </Button>
-              {pet.game_data.coins > 0 && (
-                <p className="text-xs text-red-400">
-                  Kamu harus memiliki 0 koin untuk bisa menghidupkan kembali.
-                </p>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Bagian ini hanya tampil jika pet hidup */}
-              <div className="pt-2">
-                <Button
-                  onClick={() => mutateLevelUp({ petId: pet.id })}
-                  disabled={!canLevelUp || isAnyActionPending}
-                  className="w-full bg-green-600 hover:bg-green-700"
-                >
-                  {isLevelingUp ? (
-                    <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <ChevronUpIcon className="mr-2 h-4 w-4" />
-                  )}
-                  Level Up!
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <ActionButton
-                  onClick={() => mutateFeedPet({ petId: pet.id })}
-                  disabled={!canFeed || isAnyActionPending}
-                  isPending={isFeeding}
-                  label="Beri Makan"
-                  icon={<DrumstickIcon />}
-                />
-                <ActionButton
-                  onClick={() => mutatePlayWithPet({ petId: pet.id })}
-                  disabled={!canPlay || isAnyActionPending}
-                  isPending={isPlaying}
-                  label="Bermain"
-                  icon={<PlayIcon />}
-                />
-                <div className="col-span-2">
-                  <ActionButton
-                    onClick={() => mutateWorkForCoins({ petId: pet.id })}
-                    disabled={!canWork || isAnyActionPending}
-                    isPending={isWorking}
-                    label="Bekerja"
-                    icon={<BriefcaseIcon />}
-                  />
-                </div>
-              </div>
-              
-              {/* BARU: Tombol Beg for Coins hanya muncul jika koin 0 dan pet hidup */}
-              {canBeg && (
-                <div className="col-span-2">
-                  <ActionButton
-                    onClick={() => mutateBegForCoins({ petId: pet.id })}
-                    disabled={isAnyActionPending}
-                    isPending={isBegging}
-                    label="Minta Koin"
-                    icon={<HandCoinsIcon />}
-                    className="w-full bg-slate-500 hover:bg-slate-600"
-                  />
-                </div>
-              )}
-
-              <div className="col-span-2 pt-2">
-                {pet.isSleeping ? (
-                  <Button
-                    onClick={() => mutateWakeUpPet({ petId: pet.id })}
-                    disabled={isWakingUp}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600"
-                  >
-                    {isWakingUp ? (
-                      <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <ZapIcon className="mr-2 h-4 w-4" />
-                    )}{" "}
-                    Bangun!
-                  </Button>
+            ) : (
+              <Button
+                onClick={() => mutateLetPetSleep({ petId: pet.id })}
+                disabled={isAnyActionPending}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {isSleeping ? (
+                  <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <Button
-                    onClick={() => mutateLetPetSleep({ petId: pet.id })}
-                    disabled={isAnyActionPending}
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                  >
-                    {isSleeping ? (
-                      <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <BedIcon className="mr-2 h-4 w-4" />
-                    )}{" "}
-                    Tidur
-                  </Button>
-                )}
-              </div>
-            </>
-          )}
+                  <BedIcon className="mr-2 h-4 w-4" />
+                )}{" "}
+                Sleep
+              </Button>
+            )}
+          </div>
         </CardContent>
-        {/* MODIFIKASI: Wardrobe tidak bisa diakses saat pingsan */}
         <WardrobeManager
           pet={pet}
-          isAnyActionPending={isAnyActionPending || pet.isSleeping || pet.is_dead}
+          isAnyActionPending={isAnyActionPending || pet.isSleeping}
         />
       </Card>
     </TooltipProvider>
