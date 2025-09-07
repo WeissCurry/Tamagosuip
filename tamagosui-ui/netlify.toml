@@ -1,0 +1,58 @@
+# netlify.toml
+
+# Pengaturan utama untuk proses build
+[build]
+  # Perintah untuk membangun situsmu (sesuaikan dengan framework-mu)
+  # Contoh: "npm run build", "yarn build", "hugo", "jekyll build"
+  command = "npm run build"
+
+  # Direktori output setelah proses build selesai
+  # Contoh: "dist", "build", "public", "_site"
+  publish = "dist"
+
+  # Versi Node.js, Go, atau bahasa lain yang ingin digunakan
+  # [build.environment]
+  #   NODE_VERSION = "20"
+  #   NPM_VERSION = "10.5.0"
+
+# --- Contoh Konfigurasi Tambahan (opsional) ---
+
+# Pengaturan untuk Netlify Dev (lingkungan lokal)
+[dev]
+  # Port yang akan digunakan saat menjalankan 'netlify dev'
+  port = 8888
+  # Framework yang digunakan, agar Netlify bisa mendeteksi pengaturan secara otomatis
+  framework = "#auto"
+
+# Pengalihan (Redirects) untuk Single Page Application (SPA)
+# Ini mengalihkan semua permintaan yang tidak ditemukan ke index.html.
+# Berguna untuk framework seperti React, Vue, atau Angular.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Contoh pengalihan permanen (301) dari halaman lama ke halaman baru
+# [[redirects]]
+#   from = "/old-page"
+#   to = "/new-page"
+#   status = 301
+
+# Menambahkan custom headers
+[[headers]]
+  # Terapkan header ini untuk semua halaman
+  for = "/*"
+    [headers.values]
+    # Header keamanan dasar
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    # Contoh Cache-Control (cache selama 1 tahun untuk aset di /assets)
+    # Cache-Control = '''
+    #   max-age=31536000,
+    #   public'''
+
+# Contoh spesifik untuk caching aset
+# [[headers]]
+#   for = "/assets/*"
+#   [headers.values]
+#     Cache-Control = "public, max-age=31536000, immutable"
