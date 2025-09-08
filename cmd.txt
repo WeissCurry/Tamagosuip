@@ -1,0 +1,13 @@
+
+// main dan makan
+sui client ptb \
+--move-call 0x439ea04e50f2a6d5be010e0c4b1e1bccde646c61e9d104b8f60e52fdd7d8546d ::tamagosui::feed_pet 0x55e2c4df27318b329f3ab68e05d1e22870cc6a61748722ac2b3962bf1991eb78 \
+--move-call 0x439ea04e50f2a6d5be010e0c4b1e1bccde646c61e9d104b8f60e52fdd7d8546d ::tamagosui::play_with_pet 0x55e2c4df27318b329f3ab68e05d1e22870cc6a61748722ac2b3962bf1991eb78
+
+//upgrade cap
+0xcddc214c8f3c47d3b97d519acfa9dceae31bbf3696a86f380d9c3c01bc214e75   
+
+//Packgae ID
+0x439ea04e50f2a6d5be010e0c4b1e1bccde646c61e9d104b8f60e52fdd7d8546d     
+
+sui client upgrade --upgrade-capability 0xaaada1dd071d297e90ef014ce8b7f40b56c7dfd5d38f7f4fcf865626b37d2dc1   --package-path

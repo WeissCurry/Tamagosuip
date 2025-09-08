@@ -13,7 +13,6 @@ const E_NO_ITEM_EQUIPPED: u64 = 106;
 const E_NOT_ENOUGH_EXP: u64 = 107;
 const E_PET_IS_ASLEEP: u64 = 108;
 const E_PET_IS_ALREADY_ASLEEP: u64 = 109;
-// BARU: Error codes baru
 const E_PET_IS_DEAD: u64 = 110;
 const E_PET_IS_ALIVE: u64 = 111;
 const E_HAS_COINS: u64 = 112;
@@ -25,9 +24,14 @@ const PET_LEVEL_2_IMAGE_URL: vector<u8> = b"https://tan-kind-lizard-741.mypinata
 const PET_LEVEL_2_IMAGE_WITH_GLASSES_URL:vector<u8> = b"https://tan-kind-lizard-741.mypinata.cloud/ipfs/bafkreif5bkpnqyybq3aqgafqm72x4wfjwcuxk33vvykx44weqzuilop424";
 const PET_LEVEL_3_IMAGE_URL: vector<u8> = b"https://tan-kind-lizard-741.mypinata.cloud/ipfs/bafkreidnqerfwxuxkrdsztgflmg5jwuespdkrazl6qmk7ykfgmrfzvinoy";
 const PET_LEVEL_3_IMAGE_WITH_GLASSES_URL:vector<u8> = b"https://tan-kind-lizard-741.mypinata.cloud/ipfs/bafkreigs6r3rdupoji7pqmpwe76z7wysguzdlq43t3wqmzi2654ux5n6uu";
+const PET_LEVEL_4_IMAGE_URL: vector<u8> = b"https://res.cloudinary.com/dlsp4wsgc/image/upload/v1757308490/PET_LEVEL_4_IMAGE_URL.jpg";
+const PET_LEVEL_4_IMAGE_WITH_GLASSES_URL:vector<u8> = b"https://res.cloudinary.com/dlsp4wsgc/image/upload/v1757308491/PET_LEVEL_4_IMAGE_WITH_GLASSES_URL.jpg";
+const PET_LEVEL_5_IMAGE_URL: vector<u8> = b"https://res.cloudinary.com/dlsp4wsgc/image/upload/v1757309150/PET_LEVEL_5_IMAGE_URL.jpg";
+const PET_LEVEL_5_IMAGE_WITH_GLASSES_URL:vector<u8> = b"https://res.cloudinary.com/dlsp4wsgc/image/upload/v1757309149/PET_LEVEL_5_IMAGE_WITH_GLASSES_URL.jpg";
+
+
 const PET_SLEEP_IMAGE_URL: vector<u8> = b"https://tan-kind-lizard-741.mypinata.cloud/ipfs/bafkreihwofl5stihtzjixfhrtznd7zqkclfhmlshgsg7cbszzjqqpvf7ae";
 const ACCESSORY_GLASSES_IMAGE_URL: vector<u8> = b"https://tan-kind-lizard-741.mypinata.cloud/ipfs/bafkreigyivmq45od3jkryryi3w6t5j65hcnfh5kgwpi2ex7llf2i6se7de";
-
 const EQUIPPED_ITEM_KEY: vector<u8> = b"equipped_item";
 const SLEEP_STARTED_AT_KEY: vector<u8> = b"sleep_started_at";
 
@@ -55,6 +59,9 @@ public struct GameBalance has copy, drop {
     sleep_hunger_loss_ms: u64,
     // Level settings
     exp_per_level: u64,
+
+    revive_cost: u64,
+    beg_coins_gain: u64,
 }
 
 fun get_game_balance(): GameBalance {
@@ -76,13 +83,17 @@ fun get_game_balance(): GameBalance {
         work_coins_gain: 10,
         work_experience_gain: 15,
         // Sleep (rates per millisecond)
-        sleep_energy_gain_ms: 1000,    // 1 energy per second
-        sleep_happiness_loss_ms: 700, // 1 happiness loss per 0.7 seconds
-        sleep_hunger_loss_ms: 500,     // 1 hunger loss per 0.5 seconds
+        sleep_energy_gain_ms: 100,
+        sleep_happiness_loss_ms: 700,
+        sleep_hunger_loss_ms: 500,
         // Level
         exp_per_level: 100,
+
+        revive_cost: 100,
+        beg_coins_gain: 50,
     }
 }
+
 
 public struct TAMAGOSUI has drop {}
 
@@ -138,6 +149,7 @@ fun init(witness: TAMAGOSUI, ctx: &mut TxContext) {
         string::utf8(b"experience"),
         string::utf8(b"level"),
     ];
+
     let pet_values = vector[
         string::utf8(b"{name}"),
         string::utf8(b"{image_url}"),
@@ -145,6 +157,7 @@ fun init(witness: TAMAGOSUI, ctx: &mut TxContext) {
         string::utf8(b"{game_data.experience}"),
         string::utf8(b"{game_data.level}"),
     ];
+
     let mut pet_display = display::new_with_fields<Pet>(&publisher, pet_keys, pet_values, ctx);
     pet_display.update_version();
     transfer::public_transfer(pet_display, ctx.sender());
@@ -153,10 +166,12 @@ fun init(witness: TAMAGOSUI, ctx: &mut TxContext) {
         string::utf8(b"name"),
         string::utf8(b"image_url")
     ];
+
     let accessory_values = vector[
         string::utf8(b"{name}"),
         string::utf8(b"{image_url}")
     ];
+
     let mut accessory_display = display::new_with_fields<PetAccessory>(&publisher, accessory_keys, accessory_values, ctx);
     accessory_display.update_version();
     transfer::public_transfer(accessory_display, ctx.sender());
@@ -170,7 +185,6 @@ public fun adopt_pet(
     ctx: &mut TxContext
 ) {
     let current_time = clock.timestamp_ms();
-
     let pet_stats = PetStats {
         energy: 60,
         happiness: 50,
@@ -190,7 +204,6 @@ public fun adopt_pet(
         game_data: pet_game_data
     };
     let pet_id = object::id(&pet);
-
     event::emit(PetAdopted {
         pet_id: pet_id,
         name: pet.name,
@@ -200,9 +213,9 @@ public fun adopt_pet(
 }
 
 public fun feed_pet(pet: &mut Pet) {
-    // MODIFIKASI: Tambah pengecekan apakah pet mati/pingsan
     assert!(!is_dead(pet), E_PET_IS_DEAD);
     assert!(!is_sleeping(pet), E_PET_IS_ASLEEP);
+
     let gb = get_game_balance();
     assert!(pet.stats.hunger < gb.max_stat, E_PET_NOT_HUNGRY);
     assert!(pet.game_data.coins >= gb.feed_coins_cost, E_NOT_ENOUGH_COINS);
@@ -215,9 +228,9 @@ public fun feed_pet(pet: &mut Pet) {
 }
 
 public fun play_with_pet(pet: &mut Pet) {
-    // MODIFIKASI: Tambah pengecekan apakah pet mati/pingsan
     assert!(!is_dead(pet), E_PET_IS_DEAD);
     assert!(!is_sleeping(pet), E_PET_IS_ASLEEP);
+
     let gb = get_game_balance();
     assert!(pet.stats.energy >= gb.play_energy_loss, E_PET_TOO_TIRED);
     assert!(pet.stats.hunger >= gb.play_hunger_loss, E_PET_TOO_HUNGRY);
@@ -231,9 +244,9 @@ public fun play_with_pet(pet: &mut Pet) {
 }
 
 public fun work_for_coins(pet: &mut Pet) {
-    // MODIFIKASI: Tambah pengecekan apakah pet mati/pingsan
     assert!(!is_dead(pet), E_PET_IS_DEAD);
     assert!(!is_sleeping(pet), E_PET_IS_ASLEEP);
+
     let gb = get_game_balance();
     assert!(pet.stats.energy >= gb.work_energy_loss, E_PET_TOO_TIRED);
     assert!(pet.stats.happiness >= gb.work_happiness_loss, E_PET_NOT_HUNGRY);
@@ -244,23 +257,22 @@ public fun work_for_coins(pet: &mut Pet) {
     pet.stats.hunger = if (pet.stats.hunger >= gb.work_hunger_loss) pet.stats.hunger - gb.work_hunger_loss else 0;
     pet.game_data.coins = pet.game_data.coins + gb.work_coins_gain;
     pet.game_data.experience = pet.game_data.experience + gb.work_experience_gain;
-
+    
     emit_action(pet, b"worked");
 }
 
 public fun let_pet_sleep(pet: &mut Pet, clock: &Clock) {
-    // MODIFIKASI: Tambah pengecekan apakah pet mati/pingsan
     assert!(!is_dead(pet), E_PET_IS_DEAD);
     assert!(!is_sleeping(pet), E_PET_IS_ALREADY_ASLEEP);
 
     let key = string::utf8(SLEEP_STARTED_AT_KEY);
     dynamic_field::add(&mut pet.id, key, clock.timestamp_ms());
     pet.image_url = string::utf8(PET_SLEEP_IMAGE_URL);
+    
     emit_action(pet, b"started_sleeping");
 }
 
 public fun wake_up_pet(pet: &mut Pet, clock: &Clock) {
-    // MODIFIKASI: Tidak perlu cek is_dead karena jika sudah tidur, berarti tidak mati.
     assert!(is_sleeping(pet), E_PET_IS_ASLEEP);
 
     let key = string::utf8(SLEEP_STARTED_AT_KEY);
@@ -270,7 +282,6 @@ public fun wake_up_pet(pet: &mut Pet, clock: &Clock) {
 
     // Calculate energy gained
     let energy_gained_u64 = duration_ms / gb.sleep_energy_gain_ms;
-    // Cap energy gain to max_stat
     let energy_gained = if (energy_gained_u64 > (gb.max_stat as u64)) { gb.max_stat } else { (energy_gained_u64 as u8) };
     pet.stats.energy = if (pet.stats.energy + energy_gained > gb.max_stat) gb.max_stat else pet.stats.energy + energy_gained;
 
@@ -283,25 +294,22 @@ public fun wake_up_pet(pet: &mut Pet, clock: &Clock) {
     let hunger_lost_u64 = duration_ms / gb.sleep_hunger_loss_ms;
     let hunger_lost = if (hunger_lost_u64 > (gb.max_stat as u64)) { gb.max_stat } else { (hunger_lost_u64 as u8) };
     pet.stats.hunger = if (pet.stats.hunger > hunger_lost) pet.stats.hunger - hunger_lost else 0;
-
+    
     update_pet_image(pet);
     emit_action(pet, b"woke_up");
 }
 
 public fun check_and_level_up(pet: &mut Pet) {
-    // MODIFIKASI: Tambah pengecekan apakah pet mati/pingsan
     assert!(!is_dead(pet), E_PET_IS_DEAD);
     assert!(!is_sleeping(pet), E_PET_IS_ASLEEP);
+
     let gb = get_game_balance();
-    // Calculate required exp: level * exp_per_level
     let required_exp = (pet.game_data.level as u64) * gb.exp_per_level;
     assert!(pet.game_data.experience >= required_exp, E_NOT_ENOUGH_EXP);
 
-    // Level up
     pet.game_data.level = pet.game_data.level + 1;
     pet.game_data.experience = pet.game_data.experience - required_exp;
     
-    // Update image based on level and equipped accessory
     update_pet_image(pet);
     emit_action(pet, b"leveled_up")
 }
@@ -316,55 +324,56 @@ public fun mint_accessory(ctx: &mut TxContext) {
 }
 
 public fun equip_accessory(pet: &mut Pet, accessory: PetAccessory) {
-    // MODIFIKASI: Tambah pengecekan apakah pet mati/pingsan
     assert!(!is_dead(pet), E_PET_IS_DEAD);
     assert!(!is_sleeping(pet), E_PET_IS_ASLEEP);
+
     let key = string::utf8(EQUIPPED_ITEM_KEY);
     assert!(!dynamic_field::exists_<String>(&pet.id, copy key), E_ITEM_ALREADY_EQUIPPED);
-
-    // Add accessory to pet
+    
     dynamic_field::add(&mut pet.id, key, accessory);
-    // Update image
     update_pet_image(pet);
     emit_action(pet, b"equipped_item");
 }
 
 public fun unequip_accessory(pet: &mut Pet, ctx: &mut TxContext) {
-    // MODIFIKASI: Tambah pengecekan apakah pet mati/pingsan
     assert!(!is_dead(pet), E_PET_IS_DEAD);
     assert!(!is_sleeping(pet), E_PET_IS_ASLEEP);
+    
     let key = string::utf8(EQUIPPED_ITEM_KEY);
     assert!(dynamic_field::exists_<String>(&pet.id, key), E_NO_ITEM_EQUIPPED);
-
-    // Remove accessory
+    
     let accessory: PetAccessory = dynamic_field::remove<String, PetAccessory>(&mut pet.id, key);
-    // Update image
     update_pet_image(pet);
     transfer::transfer(accessory, ctx.sender());
     emit_action(pet, b"unequipped_item");
 }
 
-// BARU: Fungsi beg_for_coins
+// MODIFIKASI: Logika diubah agar bisa dipanggil saat pet mati
 public fun beg_for_coins(pet: &mut Pet) {
-    assert!(!is_dead(pet), E_PET_IS_DEAD);
+    // Pengecekan is_dead() dihapus agar bisa dipanggil saat mati
     assert!(pet.game_data.coins == 0, E_HAS_COINS);
-
-    // Memberikan 10 koin sebagai bantuan
-    pet.game_data.coins = 10;
-
+    
+    let gb = get_game_balance();
+    // Memberikan koin sesuai konfigurasi di GameBalance
+    pet.game_data.coins = pet.game_data.coins + gb.beg_coins_gain;
     emit_action(pet, b"begged_for_coins");
 }
 
-// BARU: Fungsi revive_pet
+// MODIFIKASI: Logika diubah agar memerlukan koin untuk revive
 public fun revive_pet(pet: &mut Pet) {
     assert!(is_dead(pet), E_PET_IS_ALIVE);
-    assert!(pet.game_data.coins == 0, E_NOT_ENOUGH_COINS); // Menggunakan error yang relevan
 
+    let gb = get_game_balance();
+    // Pengecekan baru: apakah koin cukup untuk revive
+    assert!(pet.game_data.coins >= gb.revive_cost, E_NOT_ENOUGH_COINS);
+
+    // Mengurangi koin sebagai biaya revive
+    pet.game_data.coins = pet.game_data.coins - gb.revive_cost;
+    
     // Menghidupkan kembali pet dengan status minimal
     pet.stats.hunger = 10;
     pet.stats.energy = 20;
     pet.stats.happiness = 5;
-
     emit_action(pet, b"revived");
 }
 
@@ -382,7 +391,6 @@ fun emit_action(pet: &Pet, action: vector<u8>) {
 fun update_pet_image(pet: &mut Pet) {
     let key = string::utf8(EQUIPPED_ITEM_KEY);
     let has_accessory = dynamic_field::exists_<String>(&pet.id, key);
-
     if (pet.game_data.level == 1) {
         if (has_accessory) {
             pet.image_url = string::utf8(PET_LEVEL_1_IMAGE_WITH_GLASSES_URL);
@@ -401,49 +409,42 @@ fun update_pet_image(pet: &mut Pet) {
         } else {
             pet.image_url = string::utf8(PET_LEVEL_3_IMAGE_URL);
         }
-    };
+    } else if (pet.game_data.level >= 4) {
+        if (has_accessory) {
+            pet.image_url = string::utf8(PET_LEVEL_4_IMAGE_WITH_GLASSES_URL);
+        } else {
+            pet.image_url = string::utf8(PET_LEVEL_4_IMAGE_URL);
+        }
+    } else if (pet.game_data.level >= 5) {
+        if (has_accessory) {
+            pet.image_url = string::utf8(PET_LEVEL_5_IMAGE_WITH_GLASSES_URL);
+        } else {
+            pet.image_url = string::utf8(PET_LEVEL_5_IMAGE_URL);
+        }
+    }
+    
 }
 
 // === View Functions ===
-public fun get_pet_name(pet: &Pet): String {
-    pet.name
-}
-public fun get_pet_adopted_at(pet: &Pet): u64 {
-    pet.adopted_at
-}
-public fun get_pet_coins(pet: &Pet): u64 {
-    pet.game_data.coins
-}
-public fun get_pet_experience(pet: &Pet): u64 {
-    pet.game_data.experience
-}
-public fun get_pet_level(pet: &Pet): u8 {
-    pet.game_data.level
-}
-public fun get_pet_energy(pet: &Pet): u8 {
-    pet.stats.energy
-}
-public fun get_pet_hunger(pet: &Pet): u8 {
-    pet.stats.hunger
-}
-public fun get_pet_happiness(pet: &Pet): u8 {
-    pet.stats.happiness
-}
-public fun get_pet_stats(pet: &Pet): (u8, u8, u8) {
-    (pet.stats.energy, pet.stats.hunger, pet.stats.happiness)
-}
-public fun get_pet_game_data(pet: &Pet): (u64, u64, u8) {
-    (pet.game_data.coins, pet.game_data.experience, pet.game_data.level)
-}
+public fun get_pet_name(pet: &Pet): String { pet.name }
+public fun get_pet_adopted_at(pet: &Pet): u64 { pet.adopted_at }
+public fun get_pet_coins(pet: &Pet): u64 { pet.game_data.coins }
+public fun get_pet_experience(pet: &Pet): u64 { pet.game_data.experience }
+public fun get_pet_level(pet: &Pet): u8 { pet.game_data.level }
+public fun get_pet_energy(pet: &Pet): u8 { pet.stats.energy }
+public fun get_pet_hunger(pet: &Pet): u8 { pet.stats.hunger }
+public fun get_pet_happiness(pet: &Pet): u8 { pet.stats.happiness }
+public fun get_pet_stats(pet: &Pet): (u8, u8, u8) { (pet.stats.energy, pet.stats.hunger, pet.stats.happiness) }
+public fun get_pet_game_data(pet: &Pet): (u64, u64, u8) { (pet.game_data.coins, pet.game_data.experience, pet.game_data.level) }
+
 public fun is_sleeping(pet: &Pet): bool {
     let key = string::utf8(SLEEP_STARTED_AT_KEY);
     dynamic_field::exists_<String>(&pet.id, key)
 }
-// BARU: Fungsi view untuk mengecek apakah pet mati/pingsan
+
 public fun is_dead(pet: &Pet): bool {
     pet.stats.hunger == 0
 }
-
 
 // === Test-Only Functions ===
 #[test_only]
